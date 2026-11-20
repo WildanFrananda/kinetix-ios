@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+EXPECTED_XCODE="$(tr -d '[:space:]' < .xcode-version)"
+ACTUAL_XCODE="$(xcodebuild -version | awk 'NR==1 { print $2 }')"
+if [[ "$ACTUAL_XCODE" != "$EXPECTED_XCODE" ]]; then
+    echo "Expected Xcode $EXPECTED_XCODE from .xcode-version, found $ACTUAL_XCODE" >&2
+    exit 1
+fi
+
+echo "[1/5] Checking AGENTS.md and CLAUDE.md parity"
+cmp AGENTS.md CLAUDE.md
+
+echo "[2/5] Running swift-format strict lint"
+xcrun swift-format lint --strict --recursive --configuration .swift-format \
+    Kinetix \
+    KinetixTests \
+    KinetixUITests \
+    KinetixKit/Sources \
+    KinetixKit/Tests \
+    KinetixKit/Package.swift
+
+echo "[3/5] Running KinetixKit package tests on macOS"
+swift test --package-path KinetixKit --explicit-target-dependency-import-check error
+
+SIMULATOR_LINES="$(xcrun simctl list devices available -j | /usr/bin/python3 -c '
+import json, re, sys
+
+data = json.load(sys.stdin)
+devices_by_runtime = data.get("devices", {})
+selected_latest = None
+selected_ios18 = None
+
+def runtime_version(key):
+    match = re.search(r"SimRuntime\.iOS-(\d+)-(\d+)", key)
+    if not match:
+        return None
+    return (int(match.group(1)), int(match.group(2)))
+
+ios_runtimes = []
+for key, devices in devices_by_runtime.items():
+    version = runtime_version(key)
+    if version is None:
+        continue
+    iphones = [
+        d for d in devices
+        if d.get("isAvailable") and "iPhone" in d.get("name", "")
+    ]
+    if iphones:
+        ios_runtimes.append((version, iphones[0]))
+
+ios_runtimes.sort(key=lambda item: item[0], reverse=True)
+if ios_runtimes:
+    ver, dev = ios_runtimes[0]
+    udid = dev["udid"]
+    name = dev["name"]
+    selected_latest = f"{ver[0]}.{ver[1]}|{udid}|{name}"
+
+for ver, dev in ios_runtimes:
+    if ver[0] == 18:
+        udid = dev["udid"]
+        name = dev["name"]
+        selected_ios18 = f"{ver[0]}.{ver[1]}|{udid}|{name}"
+        break
+
+if selected_latest:
+    print(selected_latest)
+if selected_ios18 and selected_ios18 != selected_latest:
+    print(selected_ios18)
+')"
+
+if [[ -z "$SIMULATOR_LINES" ]]; then
+    echo "No available iPhone simulator found" >&2
+    exit 1
+fi
+
+FIRST_SIM_UDID=""
+echo "[4/5] Running KinetixTests on iOS Simulator"
+while IFS='|' read -r RUNTIME_VER SIM_UDID SIM_NAME; do
+    if [[ -z "$FIRST_SIM_UDID" ]]; then
+        FIRST_SIM_UDID="$SIM_UDID"
+    fi
+    echo "Testing on $SIM_NAME (iOS $RUNTIME_VER, $SIM_UDID)"
+    xcodebuild test \
+        -project Kinetix.xcodeproj \
+        -scheme Kinetix \
+        -destination "id=$SIM_UDID" \
+        -only-testing:KinetixTests
+done <<< "$SIMULATOR_LINES"
+
+echo "[5/5] Building Release configuration for iOS Simulator"
+xcodebuild build \
+    -project Kinetix.xcodeproj \
+    -scheme Kinetix \
+    -configuration Release \
+    -destination "id=$FIRST_SIM_UDID" \
+    SWIFT_TREAT_WARNINGS_AS_ERRORS=YES

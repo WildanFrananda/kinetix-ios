@@ -1,0 +1,2 @@
+KINETIX_HTTP_BASE = https:/$()/api.wildanfrananda.my.id
+KINETIX_WS_BASE = wss:/$()/api.wildanfrananda.my.id
