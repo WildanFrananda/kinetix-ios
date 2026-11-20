@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+MODE="all"
+if [[ "${1:-}" == "--package-only" ]]; then
+    MODE="package"
+elif [[ "${1:-}" == "--simulator-only" ]]; then
+    MODE="simulator"
+elif [[ -n "${1:-}" ]]; then
+    echo "Unknown argument: $1 (expected --package-only or --simulator-only)" >&2
+    exit 1
+fi
+
 EXPECTED_XCODE="$(tr -d '[:space:]' < .xcode-version)"
 ACTUAL_XCODE="$(xcodebuild -version | awk 'NR==1 { print $2 }')"
 if [[ "$ACTUAL_XCODE" != "$EXPECTED_XCODE" ]]; then
@@ -11,22 +21,25 @@ if [[ "$ACTUAL_XCODE" != "$EXPECTED_XCODE" ]]; then
     exit 1
 fi
 
-echo "[1/5] Checking AGENTS.md and CLAUDE.md parity"
-cmp AGENTS.md CLAUDE.md
+if [[ "$MODE" == "all" || "$MODE" == "package" ]]; then
+    echo "[1/5] Checking AGENTS.md and CLAUDE.md parity"
+    cmp AGENTS.md CLAUDE.md
 
-echo "[2/5] Running swift-format strict lint"
-xcrun swift-format lint --strict --recursive --configuration .swift-format \
-    Kinetix \
-    KinetixTests \
-    KinetixUITests \
-    KinetixKit/Sources \
-    KinetixKit/Tests \
-    KinetixKit/Package.swift
+    echo "[2/5] Running swift-format strict lint"
+    xcrun swift-format lint --strict --recursive --configuration .swift-format \
+        Kinetix \
+        KinetixTests \
+        KinetixUITests \
+        KinetixKit/Sources \
+        KinetixKit/Tests \
+        KinetixKit/Package.swift
 
-echo "[3/5] Running KinetixKit package tests on macOS"
-swift test --package-path KinetixKit --explicit-target-dependency-import-check error
+    echo "[3/5] Running KinetixKit package tests on macOS"
+    swift test --package-path KinetixKit --explicit-target-dependency-import-check error
+fi
 
-SIMULATOR_LINES="$(xcrun simctl list devices available -j | /usr/bin/python3 -c '
+if [[ "$MODE" == "all" || "$MODE" == "simulator" ]]; then
+    SIMULATOR_LINES="$(xcrun simctl list devices available -j | /usr/bin/python3 -c '
 import json, re, sys
 
 data = json.load(sys.stdin)
@@ -72,29 +85,38 @@ if selected_ios18 and selected_ios18 != selected_latest:
     print(selected_ios18)
 ')"
 
-if [[ -z "$SIMULATOR_LINES" ]]; then
-    echo "No available iPhone simulator found" >&2
-    exit 1
-fi
-
-FIRST_SIM_UDID=""
-echo "[4/5] Running KinetixTests on iOS Simulator"
-while IFS='|' read -r RUNTIME_VER SIM_UDID SIM_NAME; do
-    if [[ -z "$FIRST_SIM_UDID" ]]; then
-        FIRST_SIM_UDID="$SIM_UDID"
+    if [[ -z "$SIMULATOR_LINES" ]]; then
+        echo "No available iPhone simulator found" >&2
+        exit 1
     fi
-    echo "Testing on $SIM_NAME (iOS $RUNTIME_VER, $SIM_UDID)"
-    xcodebuild test \
+
+    FIRST_SIM_UDID=""
+    echo "[4/5] Running KinetixTests on iOS Simulator"
+    while IFS='|' read -r RUNTIME_VER SIM_UDID SIM_NAME; do
+        if [[ -z "$FIRST_SIM_UDID" ]]; then
+            FIRST_SIM_UDID="$SIM_UDID"
+        fi
+        echo "Testing on $SIM_NAME (iOS $RUNTIME_VER, $SIM_UDID)"
+        RESULT_ARGS=()
+        if [[ -n "${KINETIX_XCRESULT_DIR:-}" ]]; then
+            mkdir -p "$KINETIX_XCRESULT_DIR"
+            RESULT_PATH="$KINETIX_XCRESULT_DIR/KinetixTests-iOS-${RUNTIME_VER}.xcresult"
+            rm -rf "$RESULT_PATH"
+            RESULT_ARGS=(-resultBundlePath "$RESULT_PATH")
+        fi
+        xcodebuild test \
+            -project Kinetix.xcodeproj \
+            -scheme Kinetix \
+            -destination "id=$SIM_UDID" \
+            -only-testing:KinetixTests \
+            "${RESULT_ARGS[@]}"
+    done <<< "$SIMULATOR_LINES"
+
+    echo "[5/5] Building Release configuration for iOS Simulator"
+    xcodebuild build \
         -project Kinetix.xcodeproj \
         -scheme Kinetix \
-        -destination "id=$SIM_UDID" \
-        -only-testing:KinetixTests
-done <<< "$SIMULATOR_LINES"
-
-echo "[5/5] Building Release configuration for iOS Simulator"
-xcodebuild build \
-    -project Kinetix.xcodeproj \
-    -scheme Kinetix \
-    -configuration Release \
-    -destination "id=$FIRST_SIM_UDID" \
-    SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+        -configuration Release \
+        -destination "id=$FIRST_SIM_UDID" \
+        SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+fi

@@ -16,7 +16,7 @@ The estate forbids comments in source code, so every design decision, protocol i
 
 ### 0.1 Where the repository stands
 
-Measured 2026-11-20. **Phase 0 and Phase 1 are built and green (GitHub Actions CI and iOS 18.0 simulator testing remain owed).**
+Measured 2026-11-20. **Phase 0 (including GitHub Actions CI/CD, Dependabot, CodeRabbit, and PR template) and Phase 1 are built and green (iOS 18.0 simulator runtime testing and IOS-D13 Apple Developer signing remain owed).**
 
 | Fact | Value |
 | :--- | :--- |
@@ -88,6 +88,12 @@ Append after every completed step or decision; newest last.
 - Updated `KinetixPalette` (`background` `#131210`, `surface` `#191815`, `surfaceElevated` `#1F1D1A`, `accent` `#F0742F`, `accentLow` `#3B1E0F`, `accentHigh` `#FFC9A6`, `textPrimary` `#F6F2EA`, `textSecondary` `#CFC9BD`, `textTertiary` `#969083`, `textMuted` `#5D584F`, `tileLight` `#F3EFE7`, `infoBlue` `#74A9D6`, `successGreen` `#74C29D`, `warningAmber` `#FFB377`, `dangerRed` `#E85D4F`, `borderHairline` `#34312C`, `borderStrong` `#4A463F`), `Assets.xcassets/AccentColor` (`#F0742F`), `KinetixLogoMark` + `KinetixBrandHeader` (matching `kinetix-docs/src/assets/kinetix-mark-dark.svg`), and all Phase 1 components and screens.
 - Visually verified the updated palette and brand mark on iPhone 18 Pro Simulator (iOS 27.2) against a live signed-in session (`AccountHomeContent` captured via `xcrun simctl io screenshot`).
 - Gate run (`bin/ci`, all 5 steps green): `cmp AGENTS.md CLAUDE.md` OK; `swift-format lint --strict` 0 errors; `KinetixKit` on macOS 27.2 passed **57 tests in 21 suites** (`KinetixDomainTests` 9 in 3 suites, `KinetixDataTests` 22 in 7 suites, `KinetixPresentationTests` 9 in 3 suites, `KinetixGateTests` 17 in 8 suites); `KinetixTests` on iPhone 18 Pro Simulator (iOS 27.2) passed **5 tests in 4 suites**; Release simulator build succeeded with warnings as errors.
+
+**2026-11-20 — CI/CD and repository automation configured (IOS-D12, IOS-D15).**
+- Confirmed from GitHub `actions/runner-images` (`xcode-27-arm64-Readme.md`) that the GA `xcode-27` Apple Silicon runner includes Xcode 27.2 at `/Applications/Xcode_27.2.app`.
+- Extended `bin/ci` with optional `--package-only` and `--simulator-only` modes plus `KINETIX_XCRESULT_DIR` support while keeping plain `./bin/ci` as the single local and CI entry point running all 5 steps.
+- Added `.github/workflows/ci.yml` (`package-and-lint` on `xcode-27`, `simulator-and-release-build` on `xcode-27` gated on `package-and-lint`, `security` Trivy critical vulnerability scan + SPDX SBOM on `ubuntu-latest`, and aggregating `verify` check), `.github/workflows/release.yml` (tag-triggered `v*.*.*` with `release-preflight` checking `KINETIX_HTTP_BASE`/`KINETIX_WS_BASE`, IOS-D13 signing secrets, and `Kinetix/GoogleService-Info.plist` `BUNDLE_ID == com.kinetix.shop`, Trivy + SBOM, `./bin/ci`, plain `xcodebuild archive` + `-exportArchive` upload via App Store Connect API key, and GitHub Release publication), `.github/dependabot.yml` (`swift` under `/KinetixKit` and `github-actions` targeting `development`), `.coderabbit.yaml` (assertive review instructions enforcing `AGENTS.md`), and `.github/PULL_REQUEST_TEMPLATE.md`. No `.gitlab-ci.yml` was added (IOS-D12).
+- Validated YAML syntax on all four YAML files, `bash -n bin/ci`, and xcconfig URL escaping (`https:/$()/...`); ran `./bin/ci --package-only` and `./bin/ci --simulator-only` cleanly. Note: remote execution on GitHub Actions `xcode-27` runners will be verified once pushed to GitHub; `release.yml` archive/upload remains blocked on IOS-D13 signing secrets.
 
 ### 0.3 Owed
 
@@ -613,7 +619,7 @@ Vertical slices in order. A slice is done when §8 holds and §0.2 says so. Infr
 - [x] Create `KinetixKit` with `swift package init` run inside an empty `KinetixKit/` directory (so the tools-version line is the toolchain's own), delete what it generated except that first line, and write the manifest to §1.3 and §1.4: three library targets, the fakes target with its explicit path, four test targets. Add the package to the project and record the resulting `project.xcproj` shape in §0.2.
 - [x] `AppConfig`, `AppConfigValidator`, `ConfigErrorScreen`, `AppContainer`, `AppRootScreen`, the theme tokens, the String Catalog in English and Indonesian: the first screen is the configuration check.
 - [x] `KinetixGateTests` for rules 3, 5, 6, 8 and 9 and for the layout checks of rule 4 the formatter cannot express, each seen red; `bin/ci`.
-- [ ] CI on GitHub Actions (IOS-D12), once the user has created the repository: `verify` aggregating the jobs, as the other repositories do; the package tests on every push, the simulator job only where it earns its minutes; dependency updates and vulnerability scanning with an SBOM.
+- [x] CI on GitHub Actions (IOS-D12): `verify` aggregating `package-and-lint`, `simulator-and-release-build`, and `security` (Trivy critical scan + SPDX SBOM); `.github/workflows/release.yml`, `.github/dependabot.yml`, `.coderabbit.yaml`, and `.github/PULL_REQUEST_TEMPLATE.md`.
 
 ### Phase 1 — Identity, session, 2FA and delivery profile
 
@@ -677,7 +683,7 @@ Vertical slices in order. A slice is done when §8 holds and §0.2 says so. Infr
 | IOS-D9 | Multilingual buyer copy on both buyer apps: English as the development language, Indonesian added in the resource files (the String Catalog here, `values-in/` on Android). Code and documents stay English | Ruled 2026-11-19 |
 | IOS-D10 | MapKit for the tracking map | Decided 2026-11-19 |
 | IOS-D11 | Nuke as the image pipeline, if it compiles clean in Swift 6 mode without concurrency escapes; otherwise a small pipeline of our own on ImageIO | Decided 2026-11-19 |
-| IOS-D12 | CI is GitHub Actions on its macOS runners (confirm an image with Xcode 27.2 exists); `bin/ci` on the developer's Mac stays the first gate. `xtool` on Linux runners was considered and not adopted: there it has no asset catalogs and no simulator, its handling of this project format and of SwiftData's macros is unproven, it cannot upload a release, and Apple's licence for the SDK it unpacks is in question. The GitLab mirror runs no iOS job unless one is asked for | Ruled 2026-11-19 |
+| IOS-D12 | CI is GitHub Actions on its `xcode-27` Apple Silicon macOS runners (confirmed 2026-11-20 from `actions/runner-images` to include `/Applications/Xcode_27.2.app`); `bin/ci` on the developer's Mac stays the first gate. `xtool` on Linux runners was considered and not adopted: there it has no asset catalogs and no simulator, its handling of this project format and of SwiftData's macros is unproven, it cannot upload a release, and Apple's licence for the SDK it unpacks is in question. The GitLab mirror runs no iOS job unless one is asked for | Ruled 2026-11-19 |
 | IOS-D13 | Apple Developer Program membership, the App Store Connect record, the APNs key in the Firebase project and the iOS app `com.kinetix.shop` registered there. Development continues on the Simulator and a free Personal Team. Without the membership there is no push entitlement, no TestFlight or App Store build and no associated domains | Deferred 2026-11-19 |
 | IOS-D14 | The wallet signs the notary registration on a page owned by `kinetix-docs`: QR out, QR or paste back (§4.10). No wallet SDK, no relay; the same page serves `kinetix-android` | Ruled 2026-11-19 |
 | IOS-D15 | Releases are plain `xcodebuild` with an App Store Connect API key. No Fastlane: it would add a second language for no capability | Decided 2026-11-19 |

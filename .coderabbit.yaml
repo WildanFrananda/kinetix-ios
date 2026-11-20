@@ -1,0 +1,38 @@
+language: "en-US"
+reviews:
+  profile: "assertive"
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+      - "development"
+  path_filters:
+    - "!Kinetix.xcodeproj/xcuserdata/**"
+    - "!*.xcworkspace/xcuserdata/**"
+  path_instructions:
+    - path: "KinetixKit/Sources/**"
+      instructions: |
+        - Enforce AGENTS.md strictly: zero comments (`//`, `/* */`, `///`) in `.swift` files (only `// swift-tools-version:` on line 1 of `Package.swift`).
+        - Enforce one top-level declaration per file matching the exact filename, with nested types allowed only for `CodingKeys` and `@Model` classes inside `VersionedSchema` (`Schema+Model.swift`).
+        - Verify layer boundaries and import allow-lists: `KinetixDomain` imports `Foundation` only; `KinetixPresentation` imports `Foundation`, `Observation`, and `KinetixDomain`; `KinetixData` respects its allow-list. Flag any UseCase/Interactor layer, DI container, or singleton.
+        - Ensure repositories return `Result<_, Failure>` without `throws`; only `SafeApiCaller`, `HttpFailureMapper`, and `TokenRefreshTransport` catch transport errors or inspect HTTP statuses; unknown outcomes are never mapped to refusal, empty, or zero.
+        - Flag any DTO missing explicit `CodingKeys`, any global `keyDecodingStrategy`/`keyEncodingStrategy`, any hardcoded host/URL/fallback value, or any `try!`, `fatalError`, `@unchecked Sendable`, `DispatchQueue`, `Task.detached`, or `Combine` usage.
+        - Ensure every ledger/outbox row and cached profile carries principal/account ownership and never leaks across signed-in buyers.
+    - path: "Kinetix/**"
+      instructions: |
+        - Enforce AGENTS.md strictly: zero comments, one SwiftUI view per file, Observation only, inert view initialisers, no services in SwiftUI `Environment`, typed `AppRoute` navigation only, and no `AnyView`.
+        - Flag any hardcoded user-facing copy outside `Kinetix/Resources/Localizable.xcstrings` (`en` + `id`), any `#Preview` containing domain data (IOS-D18), or any Firebase import outside `Kinetix/Adapters/Firebase/`.
+        - Verify design tokens follow `kinetix-docs` warm-dark tokens (`KinetixPalette`), with no gradients, glow, glass effects, or pill buttons, and verify 44pt tap targets, VoiceOver labels, and Reduce Motion handling.
+    - path: "KinetixKit/Tests/**"
+      instructions: |
+        - Verify only Swift Testing (`import Testing`) and hand-written fakes in `Tests/KinetixFakes/` are used (no mocking or stubbing frameworks).
+        - Ensure new repositories, view models, and error branches have meaningful tests without weakening assertions or `KinetixGateTests`.
+    - path: "KinetixTests/**"
+      instructions: |
+        - Verify Swift Testing is used with isolated Keychain service names and temporary SwiftData store URLs so hosted tests never mutate real user state.
+    - path: "Configuration/**"
+      instructions: |
+        - Flag any `//` in `.xcconfig` files (URLs must use `https:/$()/...` and `wss:/$()/...`) and any default fallback values for `KINETIX_HTTP_BASE` or `KINETIX_WS_BASE`.
+chat:
+  auto_reply: true

@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KINETIX_HTTP_BASE: https://api.kinetix.invalid
+  KINETIX_WS_BASE: wss://api.kinetix.invalid
+
+jobs:
+  package-and-lint:
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Select pinned Xcode version
+        run: |
+          EXPECTED_XCODE="$(tr -d '[:space:]' < .xcode-version)"
+          if [[ -d "/Applications/Xcode_${EXPECTED_XCODE}.app/Contents/Developer" ]]; then
+            sudo xcode-select -s "/Applications/Xcode_${EXPECTED_XCODE}.app/Contents/Developer"
+          fi
+          xcodebuild -version
+
+      - name: Run parity, swift-format lint, and KinetixKit tests
+        run: ./bin/ci --package-only
+
+  simulator-and-release-build:
+    needs: [package-and-lint]
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Select pinned Xcode version
+        run: |
+          EXPECTED_XCODE="$(tr -d '[:space:]' < .xcode-version)"
+          if [[ -d "/Applications/Xcode_${EXPECTED_XCODE}.app/Contents/Developer" ]]; then
+            sudo xcode-select -s "/Applications/Xcode_${EXPECTED_XCODE}.app/Contents/Developer"
+          fi
+          xcodebuild -version
+
+      - name: Write CI xcconfig endpoints
+        run: |
+          HTTP_ESCAPED="${KINETIX_HTTP_BASE//:\/\//:/\$()/}"
+          WS_ESCAPED="${KINETIX_WS_BASE//:\/\//:/\$()/}"
+          printf 'KINETIX_HTTP_BASE = %s\nKINETIX_WS_BASE = %s\n' "$HTTP_ESCAPED" "$WS_ESCAPED" > Configuration/Local.xcconfig
+
+      - name: Run iOS Simulator tests and Release simulator build
+        env:
+          KINETIX_XCRESULT_DIR: build/xcresults
+        run: ./bin/ci --simulator-only
+
+      - name: Upload Simulator test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-simulator-test-results
+          path: build/xcresults/*.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Scan dependencies for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Generate SPDX SBOM
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: spdx-json
+          output: sbom.spdx.json
+          exit-code: "0"
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.spdx.json
+          retention-days: 30
+
+  verify:
+    needs: [package-and-lint, simulator-and-release-build, security]
+    if: always()
+    permissions: {}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require package-and-lint, simulator-and-release-build, and security to succeed
+        run: |
+          test "${{ needs.package-and-lint.result }}" = success
+          test "${{ needs.simulator-and-release-build.result }}" = success
+          test "${{ needs.security.result }}" = success

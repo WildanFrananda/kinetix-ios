@@ -1,0 +1,181 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+env:
+  KINETIX_HTTP_BASE: ${{ vars.KINETIX_HTTP_BASE }}
+  KINETIX_WS_BASE: ${{ vars.KINETIX_WS_BASE }}
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Scan dependencies for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Generate SPDX SBOM
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: spdx-json
+          output: sbom.spdx.json
+          exit-code: "0"
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-sbom-${{ github.sha }}
+          path: sbom.spdx.json
+          retention-days: 30
+
+  release:
+    needs: [security]
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Select pinned Xcode version
+        run: |
+          EXPECTED_XCODE="$(tr -d '[:space:]' < .xcode-version)"
+          if [[ -d "/Applications/Xcode_${EXPECTED_XCODE}.app/Contents/Developer" ]]; then
+            sudo xcode-select -s "/Applications/Xcode_${EXPECTED_XCODE}.app/Contents/Developer"
+          fi
+          xcodebuild -version
+
+      - name: Release preflight (configuration, signing secrets, and Firebase plist)
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+          IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          if [[ -z "$KINETIX_HTTP_BASE" || -z "$KINETIX_WS_BASE" ]]; then
+            echo "KINETIX_HTTP_BASE and KINETIX_WS_BASE repository variables must be set for release builds." >&2
+            exit 1
+          fi
+          if [[ "$KINETIX_HTTP_BASE" != https://* || "$KINETIX_WS_BASE" != wss://* ]]; then
+            echo "KINETIX_HTTP_BASE must start with https:// and KINETIX_WS_BASE must start with wss://." >&2
+            exit 1
+          fi
+          if [[ -z "$APPLE_DEVELOPMENT_TEAM" || -z "$APP_STORE_CONNECT_KEY_ID" || -z "$APP_STORE_CONNECT_ISSUER_ID" || -z "$APP_STORE_CONNECT_PRIVATE_KEY_BASE64" ]]; then
+            echo "Apple Developer Program and App Store Connect API key secrets (IOS-D13) must be configured before releasing." >&2
+            exit 1
+          fi
+          if [[ -z "$IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64" ]]; then
+            echo "IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 secret must be configured before archiving." >&2
+            exit 1
+          fi
+
+          echo "$IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > Kinetix/GoogleService-Info.plist
+          PLIST_BUNDLE_ID="$(plutil -extract BUNDLE_ID raw Kinetix/GoogleService-Info.plist)"
+          if [[ "$PLIST_BUNDLE_ID" != "com.kinetix.shop" ]]; then
+            echo "GoogleService-Info.plist BUNDLE_ID must be com.kinetix.shop, found $PLIST_BUNDLE_ID." >&2
+            exit 1
+          fi
+
+      - name: Write release xcconfig endpoints
+        run: |
+          HTTP_ESCAPED="${KINETIX_HTTP_BASE//:\/\//:/\$()/}"
+          WS_ESCAPED="${KINETIX_WS_BASE//:\/\//:/\$()/}"
+          printf 'KINETIX_HTTP_BASE = %s\nKINETIX_WS_BASE = %s\n' "$HTTP_ESCAPED" "$WS_ESCAPED" > Configuration/Local.xcconfig
+
+      - name: Run full verification gate
+        run: ./bin/ci
+
+      - name: Decode App Store Connect API key and write ExportOptions.plist
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+          APP_STORE_CONNECT_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+        run: |
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>destination</key>
+            <string>upload</string>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string>${APPLE_DEVELOPMENT_TEAM}</string>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Archive signed Release build
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          xcodebuild archive \
+            -project Kinetix.xcodeproj \
+            -scheme Kinetix \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/Kinetix.xcarchive \
+            DEVELOPMENT_TEAM="$APPLE_DEVELOPMENT_TEAM" \
+            CODE_SIGN_STYLE=Automatic \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+
+      - name: Upload archive to App Store Connect (TestFlight)
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/Kinetix.xcarchive \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+
+      - name: Clean up temporary credentials and plist
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/ExportOptions.plist" Kinetix/GoogleService-Info.plist
+
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: release-sbom-${{ github.sha }}
+          path: build/sbom
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+          files: |
+            build/sbom/sbom.spdx.json
