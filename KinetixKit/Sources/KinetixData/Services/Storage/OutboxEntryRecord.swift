@@ -1,0 +1,1 @@
+public typealias OutboxEntryRecord = LedgerSchemaV1.OutboxEntryRecord
