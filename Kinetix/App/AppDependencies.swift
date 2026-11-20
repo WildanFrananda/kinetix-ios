@@ -8,7 +8,12 @@ nonisolated struct AppDependencies: Sendable {
     let authRepository: any AuthRepository
     let twoFactorRepository: any TwoFactorRepository
     let profileRepository: any ProfileRepository
+    let catalogRepository: any CatalogRepository
+    let pricingRepository: any PricingRepository
+    let searchRepository: any SearchRepository
+    let reviewRepository: any ReviewRepository
     let outboxProcessor: OutboxProcessor
+    let imagePipeline: ImagePipeline
 
     init(
         config: AppConfig,
@@ -19,6 +24,7 @@ nonisolated struct AppDependencies: Sendable {
         crashReporter: any CrashReporter,
     ) {
         self.clock = clock
+        self.imagePipeline = ImagePipeline()
 
         let vault = KeychainSessionVault()
         let markerStore = UserDefaultsFirstLaunchMarkerStore()
@@ -36,18 +42,28 @@ nonisolated struct AppDependencies: Sendable {
             clock: clock,
         )
         let apiCaller = SafeApiCaller(transport: transport, sessionRenewer: sessionRenewer)
-        let apiClient = IdentityAPIClient(apiCaller: apiCaller, clock: clock)
+        let identityClient = IdentityAPIClient(apiCaller: apiCaller, clock: clock)
+        let catalogClient = CatalogAPIClient(apiCaller: apiCaller)
+        let pricingClient = PricingAPIClient(apiCaller: apiCaller)
+        let searchClient = SearchAPIClient(apiCaller: apiCaller)
+        let reviewClient = ReviewAPIClient(apiCaller: apiCaller)
 
-        let cacheStore = SwiftDataProfileCacheStore(
-            protectedDataProvider: protectedDataProvider
+        let cacheFactory = SwiftDataCacheContainerFactory()
+        let profileCacheStore = SwiftDataProfileCacheStore(
+            factory: cacheFactory,
+            protectedDataProvider: protectedDataProvider,
+        )
+        let catalogCacheStore = SwiftDataCatalogCacheStore(
+            factory: cacheFactory,
+            protectedDataProvider: protectedDataProvider,
         )
         let outboxStore = SwiftDataOutboxStore(
             protectedDataProvider: protectedDataProvider,
             crashReporter: crashReporter,
         )
         let outboxExecutor = ProfileOutboxExecutor(
-            apiClient: apiClient,
-            cacheStore: cacheStore,
+            apiClient: identityClient,
+            cacheStore: profileCacheStore,
             clock: clock,
         )
         let processor = OutboxProcessor(
@@ -62,28 +78,36 @@ nonisolated struct AppDependencies: Sendable {
         self.sessionRepository = DefaultSessionRepository(
             vault: vault,
             firstLaunchCleaner: firstLaunchCleaner,
-            apiClient: apiClient,
-            cacheStore: cacheStore,
+            apiClient: identityClient,
+            cacheStore: profileCacheStore,
             routeStore: routeStore,
             outboxProcessor: processor,
             analyticsTracker: analyticsTracker,
             crashReporter: crashReporter,
         )
         self.authRepository = DefaultAuthRepository(
-            apiClient: apiClient,
+            apiClient: identityClient,
             vault: vault,
-            cacheStore: cacheStore,
+            cacheStore: profileCacheStore,
             routeStore: routeStore,
             analyticsTracker: analyticsTracker,
             crashReporter: crashReporter,
         )
-        self.twoFactorRepository = DefaultTwoFactorRepository(apiClient: apiClient)
+        self.twoFactorRepository = DefaultTwoFactorRepository(apiClient: identityClient)
         self.profileRepository = DefaultProfileRepository(
-            apiClient: apiClient,
-            cacheStore: cacheStore,
+            apiClient: identityClient,
+            cacheStore: profileCacheStore,
             outboxProcessor: processor,
             outboxStore: outboxStore,
             clock: clock,
         )
+        self.catalogRepository = DefaultCatalogRepository(
+            apiClient: catalogClient,
+            cacheStore: catalogCacheStore,
+            clock: clock,
+        )
+        self.pricingRepository = DefaultPricingRepository(apiClient: pricingClient)
+        self.searchRepository = DefaultSearchRepository(apiClient: searchClient)
+        self.reviewRepository = DefaultReviewRepository(apiClient: reviewClient)
     }
 }

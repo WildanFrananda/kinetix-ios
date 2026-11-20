@@ -68,4 +68,23 @@ struct ProfileViewModelAndRouterTests {
         #expect(router.path.isEmpty)
         #expect(store.loadEncodedPath(for: principalA) == nil)
     }
+
+    @Test
+    func languageSettingsViewModelLoadsPersistsAndResolvesLocaleOverride() {
+        let store = FakeLanguagePreferenceStore(initial: .system)
+        let viewModel = LanguageSettingsViewModel(store: store)
+
+        #expect(viewModel.selectedLanguage == .system)
+        #expect(viewModel.activeLocaleOverride == nil)
+
+        viewModel.selectLanguage(.indonesian)
+        #expect(viewModel.selectedLanguage == .indonesian)
+        #expect(store.loadLanguage() == .indonesian)
+        #expect(viewModel.activeLocaleOverride?.identifier == "id")
+
+        viewModel.selectLanguage(.english)
+        #expect(viewModel.selectedLanguage == .english)
+        #expect(store.loadLanguage() == .english)
+        #expect(viewModel.activeLocaleOverride?.identifier == "en")
+    }
 }

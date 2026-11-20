@@ -7,7 +7,9 @@ enum KinetixTypography {
     static let body = Font.system(.body, design: .default, weight: .regular)
     static let subheadline = Font.system(.subheadline, design: .default, weight: .regular)
     static let fieldLabel = Font.system(.footnote, design: .default, weight: .medium)
+    static let caption = Font.system(.caption, design: .default, weight: .regular)
     static let eyebrow = Font.system(.caption, design: .default, weight: .semibold)
     static let labelMono = Font.system(.footnote, design: .monospaced, weight: .medium)
+    static let priceMono = Font.system(.headline, design: .monospaced, weight: .bold)
     static let otpCode = Font.system(.title, design: .monospaced, weight: .bold)
 }

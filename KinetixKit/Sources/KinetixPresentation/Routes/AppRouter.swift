@@ -45,7 +45,15 @@ public final class AppRouter {
 
         if let pending = pendingSessionRoute {
             pendingSessionRoute = nil
-            path = [pending]
+            let preserved = path.filter { !$0.isAuthEntryRoute }
+            path = preserved + [pending]
+            persistIfAuthenticated()
+            return
+        }
+
+        let currentNonAuth = path.filter { !$0.isAuthEntryRoute }
+        if !currentNonAuth.isEmpty {
+            path = currentNonAuth
             persistIfAuthenticated()
             return
         }
@@ -61,7 +69,7 @@ public final class AppRouter {
             return
         }
 
-        path = decoded.filter { $0.requiresSession }
+        path = decoded.filter { !$0.isAuthEntryRoute }
     }
 
     public func persistCurrentPath() {
@@ -76,7 +84,7 @@ public final class AppRouter {
         activePrincipalId = nil
         pendingSessionRoute = nil
         activeChallenge = nil
-        path = []
+        path = path.filter { !$0.requiresSession && !$0.isAuthEntryRoute }
     }
 
     private func persistIfAuthenticated() {
@@ -84,7 +92,7 @@ public final class AppRouter {
             return
         }
 
-        let persistable = path.filter { $0.requiresSession }
+        let persistable = path.filter { !$0.isAuthEntryRoute }
         if persistable.isEmpty {
             persistenceStore.clearPath(for: principalId)
             return

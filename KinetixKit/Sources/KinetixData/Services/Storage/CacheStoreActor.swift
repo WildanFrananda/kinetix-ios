@@ -105,4 +105,42 @@ public actor CacheStoreActor {
 
         try modelContext.save()
     }
+
+    public func readCatalogPayload(forKey key: String) throws -> Data? {
+        let targetKey = key
+        let descriptor = FetchDescriptor<CachedCatalogPayloadRecord>(
+            predicate: #Predicate<CachedCatalogPayloadRecord> { record in
+                record.cacheKey == targetKey
+            }
+        )
+
+        return try modelContext.fetch(descriptor).first?.payloadData
+    }
+
+    public func saveCatalogPayload(
+        _ data: Data,
+        forKey key: String,
+        savedAt: Date,
+    ) throws {
+        let targetKey = key
+        let descriptor = FetchDescriptor<CachedCatalogPayloadRecord>(
+            predicate: #Predicate<CachedCatalogPayloadRecord> { record in
+                record.cacheKey == targetKey
+            }
+        )
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            existing.payloadData = data
+            existing.updatedAt = savedAt
+        } else {
+            let record = CachedCatalogPayloadRecord(
+                cacheKey: key,
+                payloadData: data,
+                updatedAt: savedAt,
+            )
+            modelContext.insert(record)
+        }
+
+        try modelContext.save()
+    }
 }

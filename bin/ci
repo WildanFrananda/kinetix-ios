@@ -97,19 +97,23 @@ if selected_ios18 and selected_ios18 != selected_latest:
             FIRST_SIM_UDID="$SIM_UDID"
         fi
         echo "Testing on $SIM_NAME (iOS $RUNTIME_VER, $SIM_UDID)"
-        RESULT_ARGS=()
         if [[ -n "${KINETIX_XCRESULT_DIR:-}" ]]; then
             mkdir -p "$KINETIX_XCRESULT_DIR"
             RESULT_PATH="$KINETIX_XCRESULT_DIR/KinetixTests-iOS-${RUNTIME_VER}.xcresult"
             rm -rf "$RESULT_PATH"
-            RESULT_ARGS=(-resultBundlePath "$RESULT_PATH")
+            xcodebuild test \
+                -project Kinetix.xcodeproj \
+                -scheme Kinetix \
+                -destination "id=$SIM_UDID" \
+                -only-testing:KinetixTests \
+                -resultBundlePath "$RESULT_PATH"
+        else
+            xcodebuild test \
+                -project Kinetix.xcodeproj \
+                -scheme Kinetix \
+                -destination "id=$SIM_UDID" \
+                -only-testing:KinetixTests
         fi
-        xcodebuild test \
-            -project Kinetix.xcodeproj \
-            -scheme Kinetix \
-            -destination "id=$SIM_UDID" \
-            -only-testing:KinetixTests \
-            "${RESULT_ARGS[@]}"
     done <<< "$SIMULATOR_LINES"
 
     echo "[5/5] Building Release configuration for iOS Simulator"
