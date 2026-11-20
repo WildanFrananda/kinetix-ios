@@ -1,0 +1,1 @@
+public typealias CachedCatalogPayloadRecord = CacheSchemaV1.CachedCatalogPayloadRecord

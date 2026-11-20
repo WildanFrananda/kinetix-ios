@@ -4,6 +4,8 @@ import KinetixDomain
 import SwiftData
 import Testing
 
+@testable import Kinetix
+
 struct SwiftDataIOSTripwireTests {
     @Test
     func ledgerPersistsAcrossContainersPreservesUpsertStateAndRunsOffMainThreadOnIOS() async throws
@@ -54,5 +56,39 @@ struct SwiftDataIOSTripwireTests {
 
         #expect(reloaded?.payloadData == Data("ios-merged".utf8))
         #expect(reloaded?.attemptCount == 2)
+    }
+
+    @Test
+    func catalogCacheStoreAndExactMoneyDecodingHoldOnIOSSimulator() async throws {
+        for sample in ["193800.55", "202000.00", "85000"] {
+            let expected = try #require(WireDecimal.parse(sample))
+            let decoded = try JSONDecoder().decode([Decimal].self, from: Data("[\(sample)]".utf8))
+            #expect(decoded.first == expected)
+        }
+
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kinetix-ios-catalog-cache-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let storeURL = dir.appendingPathComponent("cache.store")
+        let factory = SwiftDataCacheContainerFactory(storeURL: storeURL)
+        let provider = UIKitProtectedDataStatusProvider()
+        let firstStore = SwiftDataCatalogCacheStore(
+            factory: factory,
+            protectedDataProvider: provider,
+        )
+
+        let slug = try #require(CategorySlug("pakaian"))
+        let category = ProductCategory(id: 3, name: "Pakaian", slug: slug)
+        let now = Date(timeIntervalSince1970: 1_760_000_000)
+        await firstStore.saveCategories([category], savedAt: now)
+
+        let secondStore = SwiftDataCatalogCacheStore(
+            factory: factory,
+            protectedDataProvider: provider,
+        )
+        let loadedCategories = await secondStore.readCategories()
+        #expect(loadedCategories == [category])
     }
 }

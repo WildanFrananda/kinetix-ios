@@ -1,10 +1,13 @@
+import KinetixDomain
 import SwiftUI
 
 struct AccountHomeContent: View {
     let email: String
     let isSigningOut: Bool
+    let selectedLanguage: AppLanguage
     let onOpenProfile: () -> Void
     let onOpenTwoFactor: () -> Void
+    let onOpenLanguageSettings: () -> Void
     let onSignOut: () -> Void
 
     @State private var showingSignOutConfirmation = false
@@ -38,6 +41,18 @@ struct AccountHomeContent: View {
                             subtitle: .accountTwoFactorRowSubtitle,
                             icon: "lock.shield",
                             action: onOpenTwoFactor,
+                        )
+
+                        Rectangle()
+                            .fill(KinetixPalette.borderHairline)
+                            .frame(height: KinetixTheme.borderWidthHairline)
+                            .padding(.leading, 56)
+
+                        navigationRow(
+                            title: .languageSettingsTitle,
+                            subtitle: currentLanguageSubtitle,
+                            icon: "globe",
+                            action: onOpenLanguageSettings,
                         )
                     }
                     .background(KinetixPalette.surface)
@@ -167,6 +182,17 @@ struct AccountHomeContent: View {
         return String(first).uppercased()
     }
 
+    private var currentLanguageSubtitle: LocalizedStringResource {
+        switch selectedLanguage {
+        case .system:
+            return .languageOptionSystemTitle
+        case .english:
+            return .languageOptionEnglishTitle
+        case .indonesian:
+            return .languageOptionIndonesianTitle
+        }
+    }
+
     private func navigationRow(
         title: LocalizedStringResource,
         subtitle: LocalizedStringResource,
@@ -211,8 +237,10 @@ struct AccountHomeContent: View {
     AccountHomeContent(
         email: "",
         isSigningOut: false,
+        selectedLanguage: .system,
         onOpenProfile: {},
         onOpenTwoFactor: {},
+        onOpenLanguageSettings: {},
         onSignOut: {},
     )
     .preferredColorScheme(.dark)

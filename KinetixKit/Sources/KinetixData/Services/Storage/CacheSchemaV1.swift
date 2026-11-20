@@ -7,6 +7,9 @@ public enum CacheSchemaV1: VersionedSchema {
     }
 
     public static var models: [any PersistentModel.Type] {
-        return [CachedProfileRecord.self]
+        return [
+            CachedProfileRecord.self,
+            CachedCatalogPayloadRecord.self,
+        ]
     }
 }

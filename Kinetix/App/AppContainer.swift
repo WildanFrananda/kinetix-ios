@@ -6,12 +6,14 @@ import KinetixPresentation
 
 final class AppContainer {
     let router: AppRouter
+    let languageSettingsViewModel: LanguageSettingsViewModel
     let failureMapper: FailureMessageMapper
 
     private let configSource: any AppConfigSource
     private let configValidator: AppConfigValidator
     private let clock: any AppClock
     private let routeStore: any RoutePersistenceStore
+    private let languageStore: any LanguagePreferenceStore
     private let protectedDataProvider: any ProtectedDataStatusProvider
     private let analyticsTracker: any AnalyticsTracker
     private let crashReporter: any CrashReporter
@@ -24,6 +26,9 @@ final class AppContainer {
         let store = UserDefaultsRoutePersistenceStore()
         self.routeStore = store
         self.router = AppRouter(persistenceStore: store)
+        let languageStore = UserDefaultsLanguagePreferenceStore()
+        self.languageStore = languageStore
+        self.languageSettingsViewModel = LanguageSettingsViewModel(store: languageStore)
         self.protectedDataProvider = UIKitProtectedDataStatusProvider()
         self.analyticsTracker = OSLogAnalyticsTracker()
         self.crashReporter = OSLogCrashReporter()
@@ -69,6 +74,40 @@ final class AppContainer {
         )
         dependencies = built
         return built
+    }
+
+    func imagePipeline(for config: AppConfig) -> ImagePipeline {
+        return resolveDependencies(for: config).imagePipeline
+    }
+
+    func makeCatalogHomeViewModel(config: AppConfig) -> CatalogHomeViewModel {
+        let deps = resolveDependencies(for: config)
+        return CatalogHomeViewModel(
+            catalogRepository: deps.catalogRepository,
+            pricingRepository: deps.pricingRepository,
+        )
+    }
+
+    func makeProductDetailViewModel(
+        config: AppConfig,
+        sku: ProductSku,
+    ) -> ProductDetailViewModel {
+        let deps = resolveDependencies(for: config)
+        return ProductDetailViewModel(
+            sku: sku,
+            catalogRepository: deps.catalogRepository,
+            pricingRepository: deps.pricingRepository,
+            reviewRepository: deps.reviewRepository,
+        )
+    }
+
+    func makeSearchViewModel(config: AppConfig) -> SearchViewModel {
+        let deps = resolveDependencies(for: config)
+        return SearchViewModel(
+            searchRepository: deps.searchRepository,
+            catalogRepository: deps.catalogRepository,
+            clock: deps.clock,
+        )
     }
 
     func makeSignInViewModel(config: AppConfig) -> SignInViewModel {
