@@ -49,7 +49,10 @@ let package = Package(
         ),
         .target(
             name: "KinetixFakes",
-            dependencies: ["KinetixDomain"],
+            dependencies: [
+                "KinetixDomain",
+                "KinetixData",
+            ],
             path: "Tests/KinetixFakes",
             swiftSettings: baseSwiftSettings,
         ),

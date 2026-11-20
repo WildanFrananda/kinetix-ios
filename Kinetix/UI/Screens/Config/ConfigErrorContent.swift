@@ -7,9 +7,12 @@ struct ConfigErrorContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: KinetixTheme.spacingLarge) {
+                KinetixBrandHeader()
+                    .padding(.top, KinetixTheme.spacingMedium)
+
                 HStack(spacing: KinetixTheme.spacingSmall) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(KinetixPalette.dangerCoral)
+                        .foregroundStyle(KinetixPalette.dangerRed)
                         .accessibilityHidden(true)
 
                     Text(.configErrorTitle)
@@ -21,9 +24,16 @@ struct ConfigErrorContent: View {
                     .font(KinetixTypography.body)
                     .foregroundStyle(KinetixPalette.textSecondary)
 
-                VStack(alignment: .leading, spacing: KinetixTheme.spacingSmall) {
-                    ForEach(issues, id: \.self) { issue in
-                        HStack(alignment: .firstTextBaseline, spacing: KinetixTheme.spacingMedium) {
+                VStack(spacing: 0) {
+                    ForEach(Array(issues.enumerated()), id: \.element) { offset, issue in
+                        if offset > 0 {
+                            Rectangle()
+                                .fill(KinetixPalette.borderHairline)
+                                .frame(height: KinetixTheme.borderWidthHairline)
+                                .padding(.leading, KinetixTheme.spacingMedium)
+                        }
+
+                        HStack(alignment: .center, spacing: KinetixTheme.spacingMedium) {
                             Text(issue.key.rawValue)
                                 .font(KinetixTypography.labelMono)
                                 .foregroundStyle(KinetixPalette.textPrimary)
@@ -32,43 +42,43 @@ struct ConfigErrorContent: View {
                             Spacer(minLength: KinetixTheme.spacingSmall)
 
                             Text(label(for: issue.kind))
-                                .font(KinetixTypography.labelMono)
-                                .foregroundStyle(KinetixPalette.dangerCoral)
+                                .font(KinetixTypography.fieldLabel)
+                                .foregroundStyle(KinetixPalette.dangerRed)
                                 .padding(.horizontal, KinetixTheme.spacingSmall)
-                                .padding(.vertical, KinetixTheme.spacingXSmall)
-                                .background(KinetixPalette.cardSlate)
+                                .padding(.vertical, 4)
+                                .background(KinetixPalette.surfaceElevated)
                                 .clipShape(
-                                    RoundedRectangle(cornerRadius: KinetixTheme.cornerRadiusBadge)
+                                    RoundedRectangle(cornerRadius: KinetixTheme.cornerRadiusControl)
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: KinetixTheme.cornerRadiusBadge)
+                                    RoundedRectangle(cornerRadius: KinetixTheme.cornerRadiusControl)
                                         .stroke(
-                                            KinetixPalette.borderHairline,
+                                            KinetixPalette.dangerRed,
                                             lineWidth: KinetixTheme.borderWidthHairline,
                                         )
                                 )
                         }
                         .padding(KinetixTheme.spacingMedium)
-                        .background(KinetixPalette.elevatedSlate)
-                        .clipShape(RoundedRectangle(cornerRadius: KinetixTheme.cornerRadiusCard))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: KinetixTheme.cornerRadiusCard)
-                                .stroke(
-                                    KinetixPalette.borderHairline,
-                                    lineWidth: KinetixTheme.borderWidthHairline,
-                                )
-                        )
                         .accessibilityElement(children: .combine)
                     }
                 }
+                .background(KinetixPalette.surface)
+                .clipShape(RoundedRectangle(cornerRadius: KinetixTheme.cornerRadiusCard))
+                .overlay(
+                    RoundedRectangle(cornerRadius: KinetixTheme.cornerRadiusCard)
+                        .stroke(
+                            KinetixPalette.borderHairline,
+                            lineWidth: KinetixTheme.borderWidthHairline,
+                        )
+                )
 
                 Text(.configErrorFooter)
-                    .font(KinetixTypography.body)
-                    .foregroundStyle(KinetixPalette.textSecondary)
+                    .font(KinetixTypography.subheadline)
+                    .foregroundStyle(KinetixPalette.textTertiary)
             }
             .padding(KinetixTheme.spacingLarge)
         }
-        .background(KinetixPalette.obsidianSurface.ignoresSafeArea())
+        .background(KinetixPalette.background.ignoresSafeArea())
     }
 
     private func label(for kind: AppConfigIssueKind) -> LocalizedStringResource {

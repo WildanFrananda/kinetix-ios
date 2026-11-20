@@ -1,0 +1,1 @@
+public typealias CachedProfileRecord = CacheSchemaV1.CachedProfileRecord

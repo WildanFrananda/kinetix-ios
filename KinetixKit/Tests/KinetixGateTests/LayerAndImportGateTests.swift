@@ -158,6 +158,7 @@ struct LayerAndImportGateTests {
         if relativePath.hasPrefix("KinetixKit/Tests/KinetixFakes/") {
             return [
                 "KinetixDomain",
+                "KinetixData",
                 "Foundation",
                 "Testing",
                 "Synchronization",

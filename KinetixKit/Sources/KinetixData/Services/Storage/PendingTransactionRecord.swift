@@ -1,0 +1,1 @@
+public typealias PendingTransactionRecord = LedgerSchemaV1.PendingTransactionRecord

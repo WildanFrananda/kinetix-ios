@@ -16,7 +16,7 @@ The estate forbids comments in source code, so every design decision, protocol i
 
 ### 0.1 Where the repository stands
 
-Measured 2026-11-20. **Phase 0 is built and green (except GitHub Actions CI, which waits on the user creating the repository).**
+Measured 2026-11-20. **Phase 0 and Phase 1 are built and green (GitHub Actions CI and iOS 18.0 simulator testing remain owed).**
 
 | Fact | Value |
 | :--- | :--- |
@@ -31,8 +31,8 @@ Measured 2026-11-20. **Phase 0 is built and green (except GitHub Actions CI, whi
 | Device family | `1` (iPhone only), portrait only, `SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO`, `SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO` |
 | Configuration | `Configuration/App.xcconfig` (`#include? "Local.xcconfig"`) on both Debug and Release; `Configuration/Info.plist` merged with `GENERATE_INFOPLIST_FILE = YES` |
 | Strings | `Kinetix/Resources/Localizable.xcstrings` in English (`en`) and Indonesian (`id`), symbol generation on |
-| Built | Phase 0: configuration validation (`AppConfig`, `AppConfigValidator`, `BundleAppConfigSource`, `AppRootViewModel`), `ConfigErrorScreen`, `AppContainer`, `AppRootScreen`, dark theme tokens, `KinetixGateTests`, `bin/ci` |
-| Git and signing | not a repository (creating one is the user's); no team (IOS-D13 is deferred) |
+| Built | Phase 0 (configuration, package, theme, gate, `bin/ci`) and Phase 1 (transport, Keychain session & single-flight renewer, auth/2FA/profile repositories, SwiftData Cache + Ledger/Outbox with IOS-D5 tripwire, `AppRouter`, auth/2FA/profile/account screens, local crash & analytics adapters, rules 7 & 10 gates) |
+| Git and signing | git repository initialized (`main` branch); no team (IOS-D13 is deferred) |
 
 Two consequences bind every agent:
 
@@ -66,6 +66,28 @@ Append after every completed step or decision; newest last.
 - Gates seen red before green: `ZeroCommentsGateTests` (caught template comments across 5 files), `ConcurrencyGateTests` (caught `fatalError(` in template `KinetixApp.swift`), `HouseLayoutGateTests` (caught compact closing braces in `ContentView.swift` and `DtoAndConfigGateTests.swift`), `swift-format lint --strict` (caught 13 line-length/trailing-comma errors), `--explicit-target-dependency-import-check error` + `LayerAndImportGateTests` (caught deliberate undeclared `import KinetixData` in `KinetixPresentation`), plus negative unit tests for rules 3, 4, 5, 6, 8 and 9.
 - Gate run (`bin/ci`, all 5 steps green): `cmp AGENTS.md CLAUDE.md` OK; `swift-format lint --strict` 0 errors; `swift test --package-path KinetixKit --explicit-target-dependency-import-check error` on macOS 27.2 passed **22 tests in 9 suites** (`KinetixDomainTests` 4, `KinetixDataTests` 2, `KinetixPresentationTests` 3, `KinetixGateTests` 13); `xcodebuild test -only-testing:KinetixTests` on iPhone 18 Pro Simulator (iOS 27.2) passed **2 tests in 1 suite**; Release simulator build succeeded with warnings as errors.
 - Still owed from Phase 0: GitHub Actions workflow (waits on the user creating the git repository and GitHub remote, rule 15) and running `KinetixTests` on an iOS 18.0 simulator runtime once installed.
+
+**2026-11-20 — Phase 1 built and verified.**
+- Read all four Phase 1 buyer-app contract pages (`sign-up-and-sign-in.mdx`, `stay-signed-in.mdx`, `two-factor.mdx`, `profile.mdx`), all 11 endpoint specs in `kinetix-docs/src/site/rest/endpoints/identity.ts`, and `kinetix-identity-service` profile DTO/entity/usecase source.
+- Built `KinetixDomain` Phase 1 core: `AppClock`, typed `Failure` enum with per-payload structs, validating typed IDs (`AccountId`, `PrincipalId`, `IdempotencyKey`), Auth/2FA/Profile models (`ProfilePatch` with field-level diffing and `AvatarUpdate` preserving `avatarUrl: null`), ports (`CrashReporter`, `AnalyticsTracker`, `ProtectedDataStatusProvider`, `RoutePersistenceStore`), and `Result`-returning repository protocols (`SessionRepository`, `AuthRepository`, `TwoFactorRepository`, `ProfileRepository`).
+- Built `KinetixData` transport, session, stores, outbox, and repositories: ephemeral `URLSessionHTTPTransport` with per-task `URLSessionTaskMetricsDelegate` (`requestLeftDevice` rule), `ApiErrorParser`, `WireTimestamp` (RFC 3339 0–9 fractional digits), `HttpFailureMapper`, `SafeApiCaller`, `KeychainSessionVault` (`SecItemAdd` + `SecItemUpdate`, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, `.unreadable` vs `.signedOut`), `FirstLaunchSessionCleaner` (protected-data guarded), `TokenRefreshTransport` (3 refresh outcomes), single-flight `SessionRenewer` actor, explicit-`CodingKeys` Auth/2FA/Profile DTOs (`UpdateProfileRequestDTO` omitting unchanged fields and encoding `null` only for `avatarUrl` removal), separate SwiftData Cache & Ledger containers (`CacheSchemaV1`, `LedgerSchemaV1`, nested `@Model` classes, `@ModelActor` background actors, backup-excluded directories), principal-isolated `OutboxProcessor` (15s–300s backoff + `Retry-After` + `"outbox_entry_synced"`), `IdentityAPIClient`, and all four repository implementations.
+- Built `KinetixPresentation` (`AppRoute`, `AppRouter` with per-principal persistence, updated `AppRootViewModel`, `SignInViewModel`, `RegisterViewModel`, `TwoFactorChallengeViewModel`, `TwoFactorSettingsViewModel`, `ProfileViewModel`, `AccountHomeViewModel`) and `Kinetix` app UI (local OSLog crash/analytics adapters, `UIKitProtectedDataStatusProvider`, `FailureMessageMapper`, reusable dark components, on-device `QRCodeImageView`, `AppDelegateAdaptor` registering `BGAppRefreshTask`, all Phase 1 `XScreen` + stateless `XContent` views, and full `en` + `id` String Catalog entries).
+- Extended `KinetixGateTests` to Rules 7 (`FailureHandlingGateTests`) and 10 (`SwiftUIStateGateTests`), each with negative control unit tests; `HouseLayoutGateTests` and `swift-format lint --strict` caught real layout/formatting issues before turning green.
+- IOS-D5 SwiftData tripwire proven on both macOS 27.2 (`SwiftDataTripwireTests`: persistence across containers, `#Unique` upsert preserving `attemptCount`, V1→V2 lightweight migration preserving rows, off-main-thread `@ModelActor`) and iPhone 18 Pro Simulator iOS 27.2 (`SwiftDataIOSTripwireTests`). Testing on an iOS 18.0 simulator runtime remains owed until that runtime is installed.
+- Gate run (`bin/ci`, all 5 steps green): `cmp AGENTS.md CLAUDE.md` OK; `swift-format lint --strict` 0 errors; `swift test --package-path KinetixKit --explicit-target-dependency-import-check error` on macOS 27.2 passed **57 tests in 21 suites** (`KinetixDomainTests` 9 in 3 suites, `KinetixDataTests` 22 in 7 suites, `KinetixPresentationTests` 9 in 3 suites, `KinetixGateTests` 17 in 8 suites); `xcodebuild test -only-testing:KinetixTests` on iPhone 18 Pro Simulator (iOS 27.2) passed **5 tests in 4 suites** (`KinetixTests`, `FailureMessageMapperTests`, `KeychainSessionVaultTests`, `SwiftDataIOSTripwireTests`); Release simulator build succeeded with warnings as errors.
+
+**2026-11-20 — Phase 1 UI redesign & Simulator visual verification (`ios-design` + `ui-taste`).**
+- Established image-first visual targets for Sign In and Delivery Profile locked strictly to `KinetixPalette` dark tokens, a 2-radius shape scale (`cornerRadiusControl = 10`, `cornerRadiusCard = 14`), zero gradients/glow/glass/pill buttons, sans-serif form labels (reserving monospace for OTP codes, manual 2FA keys, and config keys), and single primary Electric Volt accent.
+- Added `KinetixLogoMark`, `KinetixBrandHeader`, `KinetixSectionHeader`, `KinetixGroupedInputRow`, `KinetixPressButtonStyle`, and focus/tab enums (`AuthFormField`, `TwoFactorSettingsTab`, `ProfileFormField`); upgraded `KinetixTextField` (placeholders, Electric Volt focus ring, password visibility toggle, `SubmitLabel` keyboard chaining) and `KinetixPrimaryButton` (Reduce Motion-aware press feedback and muted-Volt disabled styling).
+- Redesigned all Phase 1 screens (`SignInContent`, `RegisterContent` with live password rule checklist, `TwoFactorChallengeContent` with prominent monospaced OTP entry, `TwoFactorSettingsContent` with Enable/Disable segmented picker & one-tap copy secret, `ProfileContent` with grouped CONTACT / ADDRESS 2-column City+Postal / AVATAR cards & docked Save bar, `AccountHomeContent` with monogram header, grouped rows & Sign Out confirmation dialog, and `ConfigErrorContent`) and expanded `Localizable.xcstrings` (`en` + `id`).
+- Verified visually on iPhone 18 Pro Simulator (iOS 27.2) via `xcrun simctl io screenshot` (`sim_signin.png` → refined logo proportion, disabled CTA visual anchor, dark navigation bar chrome → re-verified `sim_signin_v2.png`); note that authenticated screens (`AccountHome`, `Profile`, `TwoFactorSettings`) were verified via SwiftUI build/gates and preview compilation, not yet captured interactively against a signed-in session.
+- Gate run (`bin/ci`, all 5 steps green): `cmp AGENTS.md CLAUDE.md` OK; `swift-format lint --strict` 0 errors; `KinetixKit` on macOS 27.2 passed **57 tests in 21 suites**; `KinetixTests` on iPhone 18 Pro Simulator (iOS 27.2) passed **5 tests in 4 suites**; Release simulator build succeeded with warnings as errors.
+
+**2026-11-20 — User ruled (IOS-D8 amended): adopt `kinetix-docs` palette & brand mark.**
+- User ruled that `kinetix-ios` must match `kinetix-docs`'s canonical warm-dark palette (`kinetix-docs/src/styles/kx-tokens.css` + `landing.css`) rather than `kinetix-android`'s earlier Obsidian/Electric Volt tokens.
+- Updated `KinetixPalette` (`background` `#131210`, `surface` `#191815`, `surfaceElevated` `#1F1D1A`, `accent` `#F0742F`, `accentLow` `#3B1E0F`, `accentHigh` `#FFC9A6`, `textPrimary` `#F6F2EA`, `textSecondary` `#CFC9BD`, `textTertiary` `#969083`, `textMuted` `#5D584F`, `tileLight` `#F3EFE7`, `infoBlue` `#74A9D6`, `successGreen` `#74C29D`, `warningAmber` `#FFB377`, `dangerRed` `#E85D4F`, `borderHairline` `#34312C`, `borderStrong` `#4A463F`), `Assets.xcassets/AccentColor` (`#F0742F`), `KinetixLogoMark` + `KinetixBrandHeader` (matching `kinetix-docs/src/assets/kinetix-mark-dark.svg`), and all Phase 1 components and screens.
+- Visually verified the updated palette and brand mark on iPhone 18 Pro Simulator (iOS 27.2) against a live signed-in session (`AccountHomeContent` captured via `xcrun simctl io screenshot`).
+- Gate run (`bin/ci`, all 5 steps green): `cmp AGENTS.md CLAUDE.md` OK; `swift-format lint --strict` 0 errors; `KinetixKit` on macOS 27.2 passed **57 tests in 21 suites** (`KinetixDomainTests` 9 in 3 suites, `KinetixDataTests` 22 in 7 suites, `KinetixPresentationTests` 9 in 3 suites, `KinetixGateTests` 17 in 8 suites); `KinetixTests` on iPhone 18 Pro Simulator (iOS 27.2) passed **5 tests in 4 suites**; Release simulator build succeeded with warnings as errors.
 
 ### 0.3 Owed
 
@@ -330,7 +352,7 @@ KINETIX_WS_BASE = wss:/$()/api.wildanfrananda.my.id
 
 ### 1.15 Design system, accessibility and localisation
 
-- One buyer brand across both platforms (IOS-D8): the tokens are those of `kinetix-android`'s `KinetixPalette` and `KinetixTypography`, read from those files and declared in Swift under `UI/Theme/`, as Android declares them in Kotlin; the app is dark only, as the Android app is.
+- Brand palette and mark follow `kinetix-docs` (IOS-D8, amended 2026-11-20 by the user): the dark colour tokens are read from `kinetix-docs/src/styles/kx-tokens.css` (warm dark `#131210` canvas, `#191815` / `#1F1D1A` surfaces, `#34312C` / `#4A463F` rules, `#F6F2EA` / `#CFC9BD` / `#969083` warm text scale, `#F0742F` / `#3B1E0F` / `#FFC9A6` terracotta accent scale, `#74A9D6` / `#74C29D` semantic lanes) and the brand mark matches `kinetix-docs/src/assets/kinetix-mark-dark.svg`, declared in Swift under `UI/Theme/`; the app is dark only.
 - The estate's taste binds here too: no gradients, no glow, no glass effects of our own, no pill buttons, hairline borders, restraint.
 - System typography with Dynamic Type; a monospaced face for prices, codes and identifiers. No price is truncated at the accessibility sizes.
 - Every interactive element has a 44-point target and a VoiceOver label; state is never conveyed by colour alone; Reduce Motion is honoured.
@@ -595,14 +617,14 @@ Vertical slices in order. A slice is done when §8 holds and §0.2 says so. Infr
 
 ### Phase 1 — Identity, session, 2FA and delivery profile
 
-- [ ] The transport arrives with its first caller: `HTTPTransport`, `SafeApiCaller`, `HttpFailureMapper`, `ApiErrorParser`, `WireTimestamp`, request ids; `Failure`, the typed ids, the clock port.
-- [ ] Session: the Keychain vault, the could-not-read state, the first-launch decision, `SessionRenewer` with the three outcomes of §1.7 and the transaction-metrics rule.
-- [ ] Identity client and DTOs; `SessionRepository`, `AuthRepository`, `TwoFactorRepository`: the three sign-in shapes, the role check, the three `429` waits with the countdown, `WRONG_CODE` against a spent challenge, the wrong-password `401` that keeps the session. Sign-out is logout at identity within its budget; the forget-the-handset step that precedes it is added in Phase 4.
-- [ ] `ProfileRepository`: the `404` state, field diffing, never `null` except `avatarUrl`, the `409` retry, the `504` settled by a read.
-- [ ] The stores arrive with their first consumers: the cache (profile) and the ledger with the outbox (profile update), with owners. **The IOS-D5 tripwire is part of this phase**, on the Mac and on an iOS simulator.
-- [ ] `AppRoute`, `AppRouter`; screens: sign-in, register, 2FA verification, 2FA settings, profile. The local crash and analytics adapters arrive with their first callers.
-- [ ] Extend the gate to rules 7 and 10.
-- [ ] Tests, each seen red: every branch above; the single-flight renewer under concurrent callers; a could-not-read Keychain status is never treated as no session, and the first-launch decision is not taken while protected data is unavailable; a phone change then an address change queue one `PUT` carrying both; a ledger entry and an outbox entry of principal A are neither repeated nor drained while principal B is signed in, and are still there when A signs in again; the outbox backoff with a fake clock.
+- [x] The transport arrives with its first caller: `HTTPTransport`, `SafeApiCaller`, `HttpFailureMapper`, `ApiErrorParser`, `WireTimestamp`, request ids; `Failure`, the typed ids, the clock port.
+- [x] Session: the Keychain vault, the could-not-read state, the first-launch decision, `SessionRenewer` with the three outcomes of §1.7 and the transaction-metrics rule.
+- [x] Identity client and DTOs; `SessionRepository`, `AuthRepository`, `TwoFactorRepository`: the three sign-in shapes, the role check, the three `429` waits with the countdown, `WRONG_CODE` against a spent challenge, the wrong-password `401` that keeps the session. Sign-out is logout at identity within its budget; the forget-the-handset step that precedes it is added in Phase 4.
+- [x] `ProfileRepository`: the `404` state, field diffing, never `null` except `avatarUrl`, the `409` retry, the `504` settled by a read.
+- [x] The stores arrive with their first consumers: the cache (profile) and the ledger with the outbox (profile update), with owners. **The IOS-D5 tripwire is part of this phase**, on the Mac and on an iOS simulator (iOS 18.0 runtime run still owed once installed).
+- [x] `AppRoute`, `AppRouter`; screens: sign-in, register, 2FA verification, 2FA settings, profile. The local crash and analytics adapters arrive with their first callers.
+- [x] Extend the gate to rules 7 and 10.
+- [x] Tests, each seen red: every branch above; the single-flight renewer under concurrent callers; a could-not-read Keychain status is never treated as no session, and the first-launch decision is not taken while protected data is unavailable; a phone change then an address change queue one `PUT` carrying both; a ledger entry and an outbox entry of principal A are neither repeated nor drained while principal B is signed in, and are still there when A signs in again; the outbox backoff with a fake clock.
 
 ### Phase 2 — Catalogue, search, promotions, reading reviews
 
@@ -651,7 +673,7 @@ Vertical slices in order. A slice is done when §8 holds and §0.2 says so. Infr
 | IOS-D5 | SwiftData for both stores, with the Phase 1 tripwire; SQLite for the ledger if the tripwire fails | Decided 2026-11-19 |
 | IOS-D6 | Firebase Messaging (fixed by the backend), Crashlytics, Analytics and Remote Config, behind ports, for parity with `kinetix-android`. All four are on Firebase's no-cost plan | Ruled 2026-11-19 |
 | IOS-D7 | iPhone only, portrait only, for the first release | Ruled 2026-11-19 |
-| IOS-D8 | The buyer palette and type scale are `kinetix-android`'s tokens; dark only; platform typefaces | Ruled 2026-11-19 |
+| IOS-D8 | The palette and brand mark follow `kinetix-docs` (`kx-tokens.css` dark tokens and `kinetix-mark-dark.svg`); dark only; platform typefaces. Supersedes the earlier 2026-11-19 ruling that copied `kinetix-android`'s Obsidian/Electric Volt palette | Ruled 2026-11-19; amended 2026-11-20 |
 | IOS-D9 | Multilingual buyer copy on both buyer apps: English as the development language, Indonesian added in the resource files (the String Catalog here, `values-in/` on Android). Code and documents stay English | Ruled 2026-11-19 |
 | IOS-D10 | MapKit for the tracking map | Decided 2026-11-19 |
 | IOS-D11 | Nuke as the image pipeline, if it compiles clean in Swift 6 mode without concurrency escapes; otherwise a small pipeline of our own on ImageIO | Decided 2026-11-19 |
@@ -688,6 +710,7 @@ The two apps keep the same contracts, failure classification, typed ids, flag ke
 | Unfinished checkout after a kill | not specified | the buyer is asked | IOS-D17 |
 | Cart writes offline | named among outbox operations | never queued | IOS-D16 |
 | Previews | none | domain-free states only | IOS-D18 |
+| Brand palette | earlier Obsidian / Electric Volt tokens | `kinetix-docs` (`kx-tokens.css`) warm dark & terracotta tokens | IOS-D8 amended 2026-11-20 by user |
 
 Three things in `kinetix-android` must not be copied; they are raised with it in §7 Q8.
 
